@@ -40,13 +40,14 @@ from VAE_struct import *
 from VAE_datagen import *
 from VAE_costs import *
 flags = tf.flags
-from ConvVAE_feed_queue_select import FLAGS
-## The pipeline is as follows:
+# FLAGS = flags.FLAGS
+from ConvVAE_feed_queue_select_multi import FLAGS
+#The pipeline is as follows:
 
 ## 1. construct the network architecture
 # fullsize = 1
 # References to model:
-basefolder = 'imgs_prepost_kl/'
+basefolder = 'imgs_prepost_null/'
 # basefolder = './'
 joint_status = ['no_joints','joints']
 print(joint_status[int(FLAGS.joints)])
@@ -111,6 +112,7 @@ saver.restore(sess,basefolder+data)
 # graph = tf.get_default_graph()
 # print([n.name for n in tf.get_default_graph().as_graph_def().node])
 graph = tf.get_default_graph()
+# sampled_tensor = graph.get_tensor_by_name("model_g_1/deconv2d_5/Sigmoid:0") # for fullsize
 sampled_tensor = graph.get_tensor_by_name("model_g_1/deconv2d_5/Sigmoid:0")
 hidden_activations = graph.get_tensor_by_name('model_g_1/hidden/MatMul:0')
 # hidden_activations = graph.get_tensor_by_name('model_g_1/hidden/model_g_1/hidden/add/activations:0')
@@ -122,6 +124,7 @@ e_tensor = graph.get_tensor_by_name('e_def:0')
 current_directory = os.getcwd()
 y_tensor_all,fullsize = get_data()
 batch = 1
+
 y_tensor_all = y_tensor_all.astype(float)
 
 ## Now we use y_tensor_all to do some preprocessing.
@@ -141,7 +144,7 @@ ny,nx=clip.size #dimensions of frame (width, height)
 
 clip=clip.crop(y1= -(ny/2)*scaley+shifty,y2=(ny/2)*scaley+shifty,x1 = -(nx/2)*scalex+shiftx,x2=nx/2*scalex+shiftx)
 # print(clip.get_frame((batch*400)*1./clip.fps)-clip.get_frame((batch*400+5000)*1./clip.fps))
-direct = 'temp'+Task+joint_status[int(FLAGS.joints)]+'inv_sample_priorKL_noshuffle'
+direct = 'temp'+Task+joint_status[int(FLAGS.joints)]+'inv_sample_prepost_null'
 if not os.path.isdir(direct):
     os.mkdir(direct)
 
@@ -151,52 +154,70 @@ from sklearn.decomposition import PCA
 batches = int(nframes/FLAGS.batch_size)
 print(batches)
 PCA_done = 0
-# batches = 1
+randomize = 0
+
 if randomize == 1:
     randbatch = np.random.permutation(batches)
 
 else:
     randbatch = np.arange(batches)
 
-if PCA_done == 0:
-    hidden = []
-    for basebatch in range(batches):
-        print(basebatch)
-        batch = basebatch
-        rand_ind = randbatch[basebatch]
-        imgs_batch = np.zeros((FLAGS.batch_size,FLAGS.Imsizex*FLAGS.Imsizey*3))
-        for index in range(FLAGS.batch_size):
-            image=img_as_ubyte(clip.get_frame((batch*400+index)*1./clip.fps))
-            # Preprocessing:
-            img_resize = imresize(image,[FLAGS.Imsizex,FLAGS.Imsizey])
-            ## now normalize to 0-1 range:
-            img_normalized = img_resize/255.
-            ## Flatten:
-            input_frame = img_normalized.reshape([1,FLAGS.Imsizex*FLAGS.Imsizey*3])
-            ## Run the network:
-            imgs_batch[index,:] = input_frame
-        # noise = np.random.randn(FLAGS.batch_size,FLAGS.hidden_size+FLAGS.domain_size+2)
-        noise = np.zeros((FLAGS.batch_size,FLAGS.hidden_size+FLAGS.domain_size+2))
-        if FLAGS.joints:
-            all_activations = sess.run(hidden_activations,feed_dict={input_tensor:imgs_batch,y_tensor:y_tensor_all[FLAGS.batch_size*rand_ind:FLAGS.batch_size*rand_ind+FLAGS.batch_size,:],e_tensor:noise})
-        else:
-            all_activations = sess.run(hidden_activations,feed_dict={input_tensor:imgs_batch,e_tensor:noise})
-        mean_activations = all_activations[:,:FLAGS.hidden_size]
-        hidden.append(mean_activations)
-
-    # reconstruction = output[0]
-    hidden_all = np.vstack(hidden)
-    # pca_analysis = PCA(n_components = 2)
-    # data_reduced = pca_analysis.fit_transform(hidden_all)
-    # xmax = np.max(data_reduced[:,0])
-    # xmin = np.min(data_reduced[:,0])
-    # ymax = np.max(data_reduced[:,1])
-    # ymin = np.min(data_reduced[:,1])
-    # print(data_reduced.shape)
-    np.save('all_hidden_activations',hidden_all)
-
-else:
-    hidden_all = np.load('all_hidden_activations.npy')
+# if PCA_done == 0:
+#     hidden = []
+#     for basebatch in range(batches):
+#         print(basebatch)
+#         batch = basebatch
+#         rand_ind = randbatch[basebatch]
+#         imgs_batch = np.zeros((FLAGS.batch_size,3*FLAGS.Imsizex*FLAGS.Imsizey*3))
+#         for index in range(FLAGS.batch_size):
+#             image=img_as_ubyte(clip.get_frame((batch*400+index)*1./clip.fps))
+#             # Preprocessing:
+#             img_resize = imresize(image,[FLAGS.Imsizex,FLAGS.Imsizey])
+#             ## now normalize to 0-1 range:
+#             img_normalized = img_resize/255.
+#             ## Flatten:
+#             # input_frame = img_normalized.reshape([1,FLAGS.Imsizex*FLAGS.Imsizey*3])
+#
+#             input_n = img_as_ubyte(clip.get_frame((batch*400+index+1)*1./clip.fps))
+#             resize_n = imresize(input_n,[FLAGS.Imsizex,FLAGS.Imsizey])
+#             normalized_n = resize_n/255.
+#
+#             input_nn = img_as_ubyte(clip.get_frame((batch*400+index+2)*1./clip.fps))
+#             resize_nn = imresize(input_nn,[FLAGS.Imsizex,FLAGS.Imsizey])
+#             normalized_nn = resize_nn/255.
+#
+#             full = np.concatenate((img_normalized,normalized_n,normalized_nn))
+#             ## Run the network:
+#             imgs_batch[index,:] = full.reshape([1,3*FLAGS.Imsizex*FLAGS.Imsizey*3])
+#
+#             # Find the right y tensors as well:
+#             y_current = y_tensor_all[FLAGS.batch_size*rand_ind:FLAGS.batch_size*rand_ind+FLAGS.batch_size,:]
+#             y_n = y_tensor_all[FLAGS.batch_size*rand_ind+1:FLAGS.batch_size*rand_ind+1+FLAGS.batch_size,:]
+#             y_nn = y_tensor_all[FLAGS.batch_size*rand_ind+2:FLAGS.batch_size*rand_ind+2+FLAGS.batch_size,:]
+#             # print(y_current.shape,y_pre.shape,y_post.shape)
+#             y_batch = np.concatenate((y_current,y_n,y_nn),axis = 1)
+#         # noise = np.random.randn(FLAGS.batch_size,FLAGS.hidden_size+FLAGS.domain_size+2)
+#         noise = np.zeros((FLAGS.batch_size,FLAGS.hidden_size+3*FLAGS.domain_size+2))
+#         if FLAGS.joints:
+#             all_activations = sess.run(hidden_activations,feed_dict={input_tensor:imgs_batch,y_tensor:y_batch,e_tensor:noise})
+#         else:
+#             all_activations = sess.run(hidden_activations,feed_dict={input_tensor:imgs_batch,e_tensor:noise})
+#         mean_activations = all_activations[:,:FLAGS.hidden_size]
+#         hidden.append(mean_activations)
+#
+#     # reconstruction = output[0]
+#     hidden_all = np.vstack(hidden)
+#     # pca_analysis = PCA(n_components = 2)
+#     # data_reduced = pca_analysis.fit_transform(hidden_all)
+#     # xmax = np.max(data_reduced[:,0])
+#     # xmin = np.min(data_reduced[:,0])
+#     # ymax = np.max(data_reduced[:,1])
+#     # ymin = np.min(data_reduced[:,1])
+#     # print(data_reduced.shape)
+#     np.save('all_hidden_activations',hidden_all)
+#
+# else:
+#     hidden_all = np.load('all_hidden_activations.npy')
     # pca_analysis = PCA(n_components = 2)
     # data_reduced = pca_analysis.fit_transform(hidden_all)
     # xmax = np.max(data_reduced[:,0])
@@ -208,11 +229,12 @@ vidindex = 0
 xaxis = deque(maxlen = FLAGS.batch_size/2)
 residuals = deque(maxlen = FLAGS.batch_size/2)
 print('here!')
+hidden = []
 for basebatch in range(batches):
     batch = basebatch
-    # rand_ind = randbatch[basebatch]
+    rand_ind = randbatch[basebatch]
     rand_ind = basebatch
-    imgs_batch = np.zeros((FLAGS.batch_size,FLAGS.Imsizex*FLAGS.Imsizey*3))
+    imgs_batch = np.zeros((FLAGS.batch_size,3*FLAGS.Imsizex*FLAGS.Imsizey*3))
     for index in range(FLAGS.batch_size):
         image=img_as_ubyte(clip.get_frame((batch*400+index)*1./clip.fps))
         # Preprocessing:
@@ -220,17 +242,39 @@ for basebatch in range(batches):
         ## now normalize to 0-1 range:
         img_normalized = img_resize/255.
         ## Flatten:
-        input_frame = img_normalized.reshape([1,FLAGS.Imsizex*FLAGS.Imsizey*3])
-        ## Run the network:
-        imgs_batch[index,:] = input_frame
-    # noise = np.random.randn(FLAGS.batch_size,FLAGS.hidden_size+FLAGS.domain_size+2)
-    noise = np.zeros((FLAGS.batch_size,FLAGS.hidden_size+FLAGS.domain_size+2))
-    if FLAGS.joints:
-        reconstruction = sess.run(sampled_tensor,feed_dict={input_tensor:imgs_batch,y_tensor:y_tensor_all[FLAGS.batch_size*rand_ind:FLAGS.batch_size*rand_ind+FLAGS.batch_size,:],e_tensor:noise})
-    else:
-        reconstruction = sess.run(sampled_tensor,feed_dict={input_tensor:imgs_batch,e_tensor:noise})
-    img_reconstruct = reconstruction.reshape([FLAGS.batch_size,FLAGS.Imsizex,FLAGS.Imsizey,3])
+        # input_frame = img_normalized.reshape([1,FLAGS.Imsizex*FLAGS.Imsizey*3])
 
+        input_n = img_as_ubyte(clip.get_frame((batch*400+index+1)*1./clip.fps))
+        resize_n = imresize(input_n,[FLAGS.Imsizex,FLAGS.Imsizey])
+        normalized_n = resize_n/255.
+
+        input_nn = img_as_ubyte(clip.get_frame((batch*400+index+2)*1./clip.fps))
+        resize_nn = imresize(input_nn,[FLAGS.Imsizex,FLAGS.Imsizey])
+        normalized_nn = resize_nn/255.
+
+        full = np.concatenate((img_normalized,normalized_n,normalized_nn))
+        ## Run the network:
+        imgs_batch[index,:] = full.reshape([1,3*FLAGS.Imsizex*FLAGS.Imsizey*3])
+
+        # Find the right y tensors as well:
+        y_current = y_tensor_all[FLAGS.batch_size*rand_ind:FLAGS.batch_size*rand_ind+FLAGS.batch_size,:]
+        y_n = y_tensor_all[FLAGS.batch_size*rand_ind+1:FLAGS.batch_size*rand_ind+1+FLAGS.batch_size,:]
+        y_nn = y_tensor_all[FLAGS.batch_size*rand_ind+2:FLAGS.batch_size*rand_ind+2+FLAGS.batch_size,:]
+        # print(y_current.shape,y_pre.shape,y_post.shape)
+        y_batch = np.concatenate((y_current,y_n,y_nn),axis = 1)
+    # noise = np.random.randn(FLAGS.batch_size,FLAGS.hidden_size+FLAGS.domain_size+2)
+    noise = np.zeros((FLAGS.batch_size,FLAGS.hidden_size+3*FLAGS.domain_size+2))
+    if FLAGS.joints:
+        out = sess.run([hidden_activations,sampled_tensor],feed_dict={input_tensor:imgs_batch,y_tensor:y_batch,e_tensor:noise})
+        all_activations = out[0]
+        reconstruction = out[1]
+    else:
+        out = sess.run([hidden_activations,sampled_tensor],feed_dict={input_tensor:imgs_batch,e_tensor:noise})
+        all_activations = out[0]
+        reconstruction = out[1]
+    img_reconstruct = reconstruction.reshape([FLAGS.batch_size,FLAGS.Imsizex,FLAGS.Imsizey,3])
+    mean_activations = all_activations[:,:FLAGS.hidden_size]
+    hidden.append(mean_activations)
         # residual = img_resize-img_reconstruct
 
     # print(img_orig)
@@ -252,11 +296,11 @@ for basebatch in range(batches):
             ax12 = plt.subplot(gs[1,2])
 
             # f,axarr = plt.subplots(2,3,figsize=(20,10))
-            residual = img_reconstruct[z,:,:,:]-imgs_batch[z,:].reshape(FLAGS.Imsizex,FLAGS.Imsizey,3)
+            residual = img_reconstruct[z,:,:,:]-imgs_batch[z,FLAGS.Imsizex*FLAGS.Imsizey*3:2*FLAGS.Imsizex*FLAGS.Imsizey*3].reshape(FLAGS.Imsizex,FLAGS.Imsizey,3)
 
             ax00.imshow(residual)
             ax00.set_title('Residual')
-            ax01.imshow(imgs_batch[z,:].reshape(FLAGS.Imsizex,FLAGS.Imsizey,3))
+            ax01.imshow(imgs_batch[z,FLAGS.Imsizex*FLAGS.Imsizey*3:2*FLAGS.Imsizex*FLAGS.Imsizey*3].reshape(FLAGS.Imsizex,FLAGS.Imsizey,3))
             for part in [1,2,3,4,5,6,7]:
                 ax01.scatter(fullsize[FLAGS.batch_size*basebatch+z,2*part],fullsize[FLAGS.batch_size*basebatch+z,2*part+1],color =colorscheme[part],alpha = 0.5)
             ax01.set_title('Original')
@@ -267,13 +311,14 @@ for basebatch in range(batches):
             residuals.append(rms)
             if len(xaxis)<FLAGS.batch_size/2:
                 xaxis.appendleft(-vidindex)
-            x_eff =fullsize[FLAGS.batch_size*basebatch+z,2].astype(int)
-            y_eff = fullsize[FLAGS.batch_size*basebatch+z,3].astype(int)
-            xmin = np.max((x_eff-20,0))
-            xmax = np.min((x_eff+20,255))
-            ymin = np.max((y_eff-20,0))
-            ymax = np.min((y_eff+20,255))
-            ax10.imshow(np.concatenate((img_reconstruct[z,ymin:ymax,xmin:xmax,:],imgs_batch[z,:].reshape(FLAGS.Imsizex,FLAGS.Imsizey,3))))
+            x_eff = (fullsize[FLAGS.batch_size*basebatch+z,2]).astype(int)
+            y_eff = (fullsize[FLAGS.batch_size*basebatch+z,3]).astype(int)
+            xmin = np.max(((x_eff-FLAGS.Imsizex/10).astype(int),0))
+            xmax = np.min(((x_eff+FLAGS.Imsizex/10).astype(int),FLAGS.Imsizex))
+            ymin = np.max(((y_eff-FLAGS.Imsizey/10).astype(int),0))
+            ymax = np.min(((y_eff+FLAGS.Imsizey/10).astype(int),FLAGS.Imsizey))
+            img_orig = imgs_batch[z,FLAGS.Imsizex*FLAGS.Imsizey*3:2*FLAGS.Imsizex*FLAGS.Imsizey*3].reshape(FLAGS.Imsizex,FLAGS.Imsizey,3)
+            ax10.imshow(np.concatenate((img_reconstruct[z,ymin:ymax,xmin:xmax,:],img_orig[ymin:ymax,xmin:xmax,:])))
             ax11.plot(xaxis,residuals,'o')
             # axarr[1,1].plot(data_reduced[FLAGS.batch_size*basebatch+z,0],data_reduced[FLAGS.batch_size*basebatch+z,1],'ro',markersize = 7)
             # axarr[1,1].plot(data_reduced[FLAGS.batch_size*basebatch+zprev,0],data_reduced[FLAGS.batch_size*basebatch+zprev,1],'o',color = 'black',markersize=6)
@@ -284,7 +329,7 @@ for basebatch in range(batches):
             ax10.set_title('Zoom Paw Reconstruction/True')
             ax11.set_xlim([-200,200])
             ax11.set_ylim([0,0.2])
-            ax12.plot(hidden_all[FLAGS.batch_size*basebatch:FLAGS.batch_size*basebatch+FLAGS.batch_size,0::5])
+            ax12.plot(mean_activations[:,0::5])
             ax12.axvline(x = z,color = 'black')
             ax12.set_title('Example Hidden Layer Activities')
             ax12.set_xlabel('Frames')
