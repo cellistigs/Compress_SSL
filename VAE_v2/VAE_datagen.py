@@ -2,6 +2,9 @@
 ## data for increased efficiency at runtimeself.
 import sys
 import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import pandas as pd
 import prettytensor as pt
 import tensorflow as tf
@@ -24,10 +27,10 @@ FLAGS = flags.FLAGS
 
 def generate_trainframes(y_tensor_all,video):
     ## Establish probability-scaled sampling:
-    X = y_tensor_all
+    X = y_tensor_all[sample_offset:,:]
     kde = KernelDensity(kernel='gaussian', bandwidth=0.2).fit(X)
-    scores = kde.score_samples(X)
-    normalized = np.round(1/scores/np.min(1/scores)).astype(int)
+    scores = np.exp(kde.score_samples(X))
+    normalized = np.round((1./scores)/np.min(1./scores)).astype(int)
     lengthvec = np.arange(np.shape(X)[0])
     to_sample = np.repeat(lengthvec,normalized)
 
@@ -45,10 +48,14 @@ def generate_trainframes(y_tensor_all,video):
 
 def generate_trainframes_multi(y_tensor_all,video):
     ## Establish probability-scaled sampling:
-    X = y_tensor_all
+    X = y_tensor_all[sample_offset:,:]
     kde = KernelDensity(kernel='gaussian', bandwidth=0.2).fit(X)
-    scores = kde.score_samples(X)
-    normalized = np.round(1/scores/np.min(1/scores)).astype(int)
+    scores = np.exp(kde.score_samples(X))
+    plt.plot(scores)
+    plt.savefig('Scores')
+    print(scores)
+    normalized = np.round(1./scores/np.min(1./scores)).astype(int)
+
     lengthvec = np.arange(np.shape(X)[0])
     to_sample = np.repeat(lengthvec,normalized)
 
@@ -71,10 +78,11 @@ def generate_trainframes_multi(y_tensor_all,video):
 
 def generate_trainframes_multi_hand(y_tensor_all,y_fullsize,video):
     ## Establish probability-scaled sampling:
-    X = y_tensor_all # we only care about the hand now.
+    X = y_tensor_all[sample_offset:,:] # we only care about the hand now.
     kde = KernelDensity(kernel='gaussian', bandwidth=0.2).fit(X)
-    scores = kde.score_samples(X)
-    normalized = np.round(1/scores/np.min(1/scores)).astype(int)
+    scores = np.exp(kde.score_samples(X))
+
+    normalized = np.round(1./scores/np.min(1./scores)).astype(int)
     lengthvec = np.arange(np.shape(X)[0])
     to_sample = np.repeat(lengthvec,normalized)
 
